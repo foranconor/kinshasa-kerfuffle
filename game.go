@@ -5,6 +5,8 @@ import (
 	"image/color"
 	"math"
 	"math/rand"
+	"os"
+	"strings"
 
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -22,22 +24,26 @@ const (
 	sH         = 800
 	title      = "Kinshasa Kerfuffle"
 	numPlayers = 2
+	strength   = 30
 )
 
 var (
-	gameOver   bool
-	paused     bool
-	bananaSent bool
-	turn       int
-	players    []gorilla.Gorilla
-	city       scape.Scape
-	banane     banana.Banana
-	explosions []banana.Explosion
-	spin       float32    // spin of the banana in rads/s
-	sky        color.RGBA = color.RGBA{121, 212, 253, 255}
-	gTop       color.RGBA = color.RGBA{0, 0, 255, 128}
-	gBottom    color.RGBA = color.RGBA{0, 255, 0, 128}
-	lights     float32
+	gameOver        bool
+	paused          bool
+	bananaSent      bool
+	turn            int
+	players         []gorilla.Gorilla
+	city            scape.Scape
+	banane          banana.Banana
+	explosions      []banana.Explosion
+	spin            float32    // spin of the banana in rads/s
+	sky             color.RGBA = color.RGBA{121, 212, 253, 255}
+	gTop            color.RGBA = color.RGBA{0, 0, 255, 128}
+	gBottom         color.RGBA = color.RGBA{0, 255, 0, 128}
+	lights          float32
+	music           rl.Music
+	explosionSounds []rl.Sound
+	throwSounds     []rl.Sound
 )
 
 func gameState() string {
@@ -56,6 +62,23 @@ func gameState() string {
 
 func init() {
 	rl.InitWindow(sW, sH, title)
+	rl.InitAudioDevice()
+	music = rl.LoadMusicStream("assets/sound/music/africa-we-go-brotheration-reggae-135977.mp3")
+	// for every file in the assets/sound/effects folder
+	// load the sound and append it to the slice
+	effects, err := os.ReadDir("assets/sound/effects")
+	if err != nil {
+		pretty.Println(err)
+		panic("Could not read sound effects")
+	}
+	for _, file := range effects {
+		if strings.Contains(file.Name(), "explode") {
+			explosionSounds = append(explosionSounds, rl.LoadSound("assets/sound/effects/"+file.Name()))
+		} else if strings.Contains(file.Name(), "throw") {
+			throwSounds = append(throwSounds, rl.LoadSound("assets/sound/effects/"+file.Name()))
+		}
+	}
+	rl.PlayMusicStream(music)
 	setup()
 }
 
@@ -86,7 +109,6 @@ func setup() {
 }
 
 func update() {
-	//pretty.Println(gameState())
 	if !gameOver {
 		if rl.IsKeyPressed(rl.KeyP) {
 			paused = !paused
@@ -105,7 +127,6 @@ func update() {
 							alive++
 						}
 					}
-					pretty.Println(alive)
 					if alive == 1 {
 						gameOver = true
 					} else {
@@ -137,7 +158,11 @@ func updateGorilla(i int) bool {
 	}
 
 	if rl.IsMouseButtonDown(rl.MouseLeftButton) {
-		players[i].Aim = rl.GetMousePosition()
+		aim := rl.GetMousePosition()
+		aim = rl.Vector2Subtract(players[i].Pos, aim)
+		aim = rl.Vector2Scale(aim, -1)
+		players[i].Aim = rl.Vector2Add(players[i].Pos, aim)
+
 	}
 
 	wheel := rl.GetMouseWheelMove()
@@ -153,11 +178,19 @@ func updateGorilla(i int) bool {
 			X: -speed.X,
 			Y: -speed.Y,
 		}
-		banane = banana.Banana{
-			Pos:    players[i].Pos,
-			Speed:  opposite,
-			Active: true,
+		// clamp the speed
+		if rl.Vector2Length(opposite) > strength {
+			opposite = rl.Vector2Normalize(opposite)
+			opposite = rl.Vector2Scale(opposite, strength)
 		}
+		pretty.Println(rl.Vector2Length(opposite))
+		banane = banana.Banana{
+			Pos:      players[i].Pos,
+			Speed:    opposite,
+			Rotation: spin,
+			Active:   true,
+		}
+		rl.PlaySound(throwSounds[rand.Intn(len(throwSounds))])
 		return true
 	}
 
@@ -174,9 +207,16 @@ func updateBanana() bool {
 		elevation := int(city.City.Elevation)
 		kpa := 101.325 * math.Pow(1-0.0065*float64(elevation)/288.15, 5.2559)
 		inv := 1/kpa - 1/101.325
-		pretty.Println(kpa)
-		pretty.Println(inv)
 		banane.Speed = rl.Vector2Scale(banane.Speed, float32(0.99-inv))
+		// apply magnus effect perpendicularly speed vector
+		effectMagnitude := 0.001 * banane.Rotation
+		force := rl.Vector2Scale(rl.Vector2Rotate(banane.Speed, -90), effectMagnitude)
+		if banane.Rotation > 0 {
+			force = rl.Vector2Scale(rl.Vector2Rotate(banane.Speed, 90), effectMagnitude)
+		}
+		banane.Speed = rl.Vector2Add(banane.Speed, force)
+		// slow the spin
+		spin *= 0.99
 
 	}
 	// check if off the screen
@@ -197,6 +237,7 @@ func updateBanana() bool {
 					Radius: 50,
 					Active: true,
 				})
+				rl.PlaySound(explosionSounds[rand.Intn(len(explosionSounds))])
 				return true
 			}
 		}
@@ -230,7 +271,6 @@ func updateBanana() bool {
 				if gorilla.IsAlive {
 					if rl.CheckCollisionPointCircle(gorilla.Pos, banane.Pos, float32(rad)) {
 						// gorilla hit
-						pretty.Println("Gorilla hit")
 						players[i].IsAlive = false
 						explosions = append(explosions, banana.Explosion{
 							Pos:    gorilla.Pos,
@@ -240,6 +280,7 @@ func updateBanana() bool {
 					}
 				}
 			}
+			rl.PlaySound(explosionSounds[rand.Intn(len(explosionSounds))])
 			return true
 		}
 	}
@@ -252,8 +293,8 @@ func draw() {
 	drawBuildings()
 	drawExplosions()
 	drawGorillas()
-	drawBanana()
 	rl.DrawRectangleGradientV(0, 0, sW, sH, gTop, gBottom)
+	drawBanana()
 	drawWindows()
 	drawAim()
 	drawHud()
@@ -389,7 +430,6 @@ func drawAim() {
 		return
 	}
 	rl.DrawLineV(players[turn].Pos, players[turn].Aim, rl.Red)
-	rl.DrawCircleV(players[turn].Pos, 10, rl.Red)
 	rl.DrawCircleV(players[turn].Aim, 5, rl.Red)
 }
 
@@ -399,6 +439,7 @@ func main() {
 	rl.SetTargetFPS(60)
 
 	for !rl.WindowShouldClose() {
+		rl.UpdateMusicStream(music)
 		update()
 		draw()
 	}
