@@ -6,7 +6,21 @@ import (
 	"math/rand"
 )
 
+var names = []string{
+	"Mek",
+	"T'hu",
+	"Fang",
+	"Mik",
+	"T'ses",
+	"T'minvith",
+	"V'lunval",
+	"Sinas",
+	"T'hukur",
+	"Vinek",
+}
+
 type Gorilla struct {
+	Name    string
 	Pos     rl.Vector2
 	Size    rl.Vector2
 	Aim     rl.Vector2
@@ -18,6 +32,11 @@ type Gorilla struct {
 }
 
 func InitGorillas(city scape.Scape, players int) []Gorilla {
+	// shuffle the names
+	rand.Shuffle(len(names), func(i, j int) {
+		names[i], names[j] = names[j], names[i]
+	})
+
 	gorillas := make([]Gorilla, players)
 	// divide the city into a as many sections as there are players with a DMZ in the middle between them
 	// place a gorilla on a random building in each section
@@ -38,6 +57,7 @@ func InitGorillas(city scape.Scape, players int) []Gorilla {
 		gorillas[i].Team = i
 		gorillas[i].IsAlive = true
 		gorillas[i].IsHuman = true
+		gorillas[i].Name = names[i]
 		j += 2
 	}
 	return gorillas

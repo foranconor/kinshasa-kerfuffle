@@ -5,6 +5,7 @@ import (
 	"github.com/lucasb-eyer/go-colorful"
 	"image/color"
 	"math/rand"
+	"time"
 )
 
 var types = []string{
@@ -12,6 +13,131 @@ var types = []string{
 	"Office",
 	"Retail",
 	"Government",
+}
+
+type City struct {
+	Name       string
+	Country    string
+	Population int
+	Elevation  int
+	Latitude   float64
+	Longitude  float64
+	Time       time.Time
+}
+
+var cities = []City{
+	{
+		Name:       "Kinshasa",
+		Country:    "DRC",
+		Population: 17032322,
+		Elevation:  240,
+		Latitude:   -4.321944,
+		Longitude:  15.311944,
+	},
+	{
+		Name:       "Brazzaville",
+		Country:    "Congo",
+		Population: 2145783,
+		Elevation:  320,
+		Latitude:   -4.269444,
+		Longitude:  15.271111,
+	},
+	{
+		Name:       "Pointe-Noire",
+		Country:    "Congo",
+		Population: 1420612,
+		Elevation:  0,
+		Latitude:   -4.7975,
+		Longitude:  11.850278,
+	},
+	{
+		Name:       "Libreville",
+		Country:    "Gabon",
+		Population: 703904,
+		Elevation:  0,
+		Latitude:   0.390278,
+		Longitude:  9.454167,
+	},
+	{
+		Name:       "Yaoundé",
+		Country:    "Cameroon",
+		Population: 2765600,
+		Elevation:  726,
+		Latitude:   3.866667,
+		Longitude:  11.516667,
+	},
+	{
+		Name:       "Douala",
+		Country:    "Cameroon",
+		Population: 5066000,
+		Elevation:  13,
+		Latitude:   4.05,
+		Longitude:  9.683333,
+	},
+	{
+		Name:       "Bujumbura",
+		Country:    "Burundi",
+		Elevation:  774,
+		Population: 1143202,
+		Latitude:   -3.383333,
+		Longitude:  29.366667,
+	},
+	{
+		Name:       "Bata",
+		Country:    "Equatorial Guinea",
+		Population: 250770,
+		Elevation:  5,
+		Latitude:   1.863611,
+		Longitude:  9.765833,
+	},
+	{
+		Name:       "Bafoussam",
+		Country:    "Cameroon",
+		Population: 1146000,
+		Elevation:  1521,
+		Latitude:   5.466667,
+		Longitude:  10.416667,
+	},
+	{
+		Name:       "Uyo",
+		Country:    "Nigeria",
+		Population: 554906,
+		Elevation:  70,
+		Latitude:   5.033333,
+		Longitude:  7.9275,
+	},
+	{
+		Name:       "Calabar",
+		Country:    "Nigeria",
+		Population: 571500,
+		Elevation:  32,
+		Latitude:   4.976667,
+		Longitude:  8.338333,
+	},
+	{
+		Name:       "Bukavu",
+		Country:    "DRC",
+		Population: 1133000,
+		Elevation:  1498,
+		Latitude:   -2.5,
+		Longitude:  28.866667,
+	},
+	{
+		Name:       "Goma",
+		Country:    "DRC",
+		Population: 670000,
+		Elevation:  1530,
+		Latitude:   -1.679444,
+		Longitude:  29.233611,
+	},
+	{
+		Name:       "Bangî",
+		Country:    "CAR",
+		Population: 812407,
+		Elevation:  369,
+		Latitude:   4.366667,
+		Longitude:  18.583333,
+	},
 }
 
 type Building struct {
@@ -31,12 +157,12 @@ type Paint struct {
 }
 
 type Scape struct {
-	Name      string
+	City      City
 	Buildings []Building
 }
 
-var MaxBuildings = 30
-var MinBuildings = 10
+var MaxBuildings = 40
+var MinBuildings = 28
 
 func Colors(buildings int) []Paint {
 	colors := make([]Paint, buildings)
@@ -76,7 +202,7 @@ func Colors(buildings int) []Paint {
 
 func InitScape(x, y int) Scape {
 	scape := Scape{
-		Name: "Kinshasa",
+		City: cities[rand.Intn(len(cities))],
 	}
 	buildings := rand.Intn(MaxBuildings-MinBuildings) + MinBuildings
 	width := x / buildings
