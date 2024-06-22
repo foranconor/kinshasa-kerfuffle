@@ -1,11 +1,13 @@
 package scape
 
 import (
-	rl "github.com/gen2brain/raylib-go/raylib"
-	"github.com/lucasb-eyer/go-colorful"
 	"image/color"
 	"math/rand"
 	"time"
+
+	rl "github.com/gen2brain/raylib-go/raylib"
+	"github.com/kr/pretty"
+	"github.com/lucasb-eyer/go-colorful"
 )
 
 var types = []string{
@@ -204,12 +206,26 @@ func InitScape(x, y int) Scape {
 	scape := Scape{
 		City: cities[rand.Intn(len(cities))],
 	}
+	hour := rand.Intn(24)
+	minute := rand.Intn(60)
+	t := time.Date(2020, 1, 1, hour, minute, 0, 0, time.UTC)
+	scape.City.Time = t
 	buildings := rand.Intn(MaxBuildings-MinBuildings) + MinBuildings
 	width := x / buildings
 	i := 0
 	w := 0.0
 	for i < buildings {
 		height := (rand.Intn(y/2) + y/10)
+		if scape.City.Population > 2000000 {
+			pretty.Println("big city")
+			height += rand.Intn(y / 3)
+		} else if scape.City.Population < 600000 {
+			pretty.Println("little city")
+			height -= rand.Intn(y / 8)
+			if height < y/10 {
+				height = y / 10
+			}
+		}
 		bWidth := width + rand.Intn(width)
 		if w+float64(bWidth) > float64(x-20) {
 			bWidth = int(float64(x) - w)

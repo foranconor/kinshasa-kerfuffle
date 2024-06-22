@@ -12,6 +12,7 @@ import (
 	"github.com/foranconor/kinshasa-kerfuffle/banana"
 	"github.com/foranconor/kinshasa-kerfuffle/gorilla"
 	"github.com/foranconor/kinshasa-kerfuffle/scape"
+	"github.com/foranconor/kinshasa-kerfuffle/tools"
 	rl "github.com/gen2brain/raylib-go/raylib"
 	"github.com/kr/pretty"
 )
@@ -34,6 +35,9 @@ var (
 	explosions []banana.Explosion
 	spin       float32    // spin of the banana in rads/s
 	sky        color.RGBA = color.RGBA{121, 212, 253, 255}
+	gTop       color.RGBA = color.RGBA{0, 0, 255, 128}
+	gBottom    color.RGBA = color.RGBA{0, 255, 0, 128}
+	lights     float32
 )
 
 func gameState() string {
@@ -51,12 +55,34 @@ func gameState() string {
 }
 
 func init() {
-
 	rl.InitWindow(sW, sH, title)
+	setup()
+}
 
+func setup() {
 	city = scape.InitScape(sW, sH)
+	gTop, gBottom = tools.CityToGradient(city.City)
 	players = gorilla.InitGorillas(city, numPlayers)
-
+	turn = 0
+	gameOver = false
+	paused = false
+	bananaSent = false
+	banane = banana.Banana{}
+	explosions = make([]banana.Explosion, 0)
+	spin = 0
+	sun := tools.CityLight(city.City)
+	switch sun {
+	case "day":
+		lights = 1
+	case "civil":
+		lights = 0.8
+	case "nautical":
+		lights = 0.5
+	case "astronomical":
+		lights = 0.2
+	default:
+		lights = 0.7
+	}
 }
 
 func update() {
@@ -95,11 +121,7 @@ func update() {
 		}
 	} else {
 		if rl.IsKeyPressed(rl.KeyEnter) {
-			gameOver = false
-			explosions = make([]banana.Explosion, 0)
-			city = scape.InitScape(sW, sH)
-			players = gorilla.InitGorillas(city, numPlayers)
-			turn = 0
+			setup()
 		}
 	}
 
@@ -231,6 +253,8 @@ func draw() {
 	drawExplosions()
 	drawGorillas()
 	drawBanana()
+	rl.DrawRectangleGradientV(0, 0, sW, sH, gTop, gBottom)
+	drawWindows()
 	drawAim()
 	drawHud()
 	rl.EndDrawing()
@@ -248,6 +272,8 @@ func drawHud() {
 	rl.DrawText(elev, 10, 50, 20, rl.White)
 	latlon := fmt.Sprintf("Lat: %0.2f°, Lon: %0.2f°", c.Latitude, c.Longitude)
 	rl.DrawText(latlon, 10, 70, 20, rl.White)
+	t := pr.Sprintf("Time: %s", c.Time.Format("15:04"))
+	rl.DrawText(t, 10, 90, 20, rl.White)
 
 	if gameOver {
 		txt := "Press Enter to restart"
@@ -300,6 +326,34 @@ func drawBuildings() {
 		rl.DrawRectangleRec(shade, building.Color.Shadow)
 		for _, window := range building.Windows {
 			rl.DrawRectangleRec(window, building.Color.Window)
+		}
+	}
+}
+
+func drawWindows() {
+	thing := rand.New(rand.NewSource(99))
+
+	for _, building := range city.Buildings {
+		for _, window := range building.Windows {
+			// 50% chance of a light being on
+			mid := rl.Vector2{
+				X: window.X + window.Width/2,
+				Y: window.Y + window.Height/2,
+			}
+			if thing.Float32() > lights {
+				// check if it's exploded
+				exploded := false
+				for _, explosion := range explosions {
+					if explosion.Active {
+						if rl.CheckCollisionPointCircle(mid, explosion.Pos, explosion.Radius+100) {
+							exploded = true
+						}
+					}
+				}
+				if !exploded {
+					rl.DrawRectangleRec(window, rl.Yellow)
+				}
+			}
 		}
 	}
 }

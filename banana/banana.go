@@ -6,7 +6,7 @@ type Banana struct {
 	Pos      rl.Vector2
 	Speed    rl.Vector2
 	Rotation float32
-	radius   float32
+	Radius   float32
 	Status   int
 	Active   bool
 }
