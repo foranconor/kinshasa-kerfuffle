@@ -14,9 +14,11 @@ import (
 	"github.com/foranconor/kinshasa-kerfuffle/banana"
 	"github.com/foranconor/kinshasa-kerfuffle/gorilla"
 	"github.com/foranconor/kinshasa-kerfuffle/scape"
+	"github.com/foranconor/kinshasa-kerfuffle/sky"
 	"github.com/foranconor/kinshasa-kerfuffle/tools"
 	rl "github.com/gen2brain/raylib-go/raylib"
 	"github.com/kr/pretty"
+	"github.com/ojrac/opensimplex-go"
 )
 
 const (
@@ -31,19 +33,25 @@ var (
 	gameOver        bool
 	paused          bool
 	bananaSent      bool
+	mute            bool
 	turn            int
 	players         []gorilla.Gorilla
 	city            scape.Scape
+	ciel            sky.Sky
+	backgroundCity  []scape.Scape
 	banane          banana.Banana
 	explosions      []banana.Explosion
 	spin            float32    // spin of the banana in rads/s
-	sky             color.RGBA = color.RGBA{121, 212, 253, 255}
 	gTop            color.RGBA = color.RGBA{0, 0, 255, 128}
 	gBottom         color.RGBA = color.RGBA{0, 255, 0, 128}
 	lights          float32
 	music           rl.Music
 	explosionSounds []rl.Sound
 	throwSounds     []rl.Sound
+	wind            opensimplex.Noise32
+	updraft         opensimplex.Noise32
+	prevailingWind  float32
+	frame           int
 )
 
 func gameState() string {
@@ -78,7 +86,8 @@ func init() {
 			throwSounds = append(throwSounds, rl.LoadSound("assets/sound/effects/"+file.Name()))
 		}
 	}
-	rl.PlayMusicStream(music)
+	//rl.PlayMusicStream(music)
+	//rl.SetMusicVolume(music, 0.2)
 	setup()
 }
 
@@ -86,6 +95,7 @@ func setup() {
 	city = scape.InitScape(sW, sH)
 	gTop, gBottom = tools.CityToGradient(city.City)
 	players = gorilla.InitGorillas(city, numPlayers)
+	ciel = sky.InitSky(city.City, sW, sH)
 	turn = 0
 	gameOver = false
 	paused = false
@@ -94,6 +104,9 @@ func setup() {
 	explosions = make([]banana.Explosion, 0)
 	spin = 0
 	sun := tools.CityLight(city.City)
+	wind = opensimplex.New32(rand.Int63())
+	updraft = opensimplex.New32(rand.Int63())
+	prevailingWind = rand.Float32()*4 - 2
 	switch sun {
 	case "day":
 		lights = 1
@@ -109,11 +122,20 @@ func setup() {
 }
 
 func update() {
+	if rl.IsKeyPressed(rl.KeyM) {
+		mute = !mute
+		if mute {
+			rl.PauseMusicStream(music)
+		} else {
+			rl.ResumeMusicStream(music)
+		}
+	}
 	if !gameOver {
 		if rl.IsKeyPressed(rl.KeyP) {
 			paused = !paused
 		}
 		if !paused {
+			updateParticles()
 			if !bananaSent {
 				// aiming
 				bananaSent = updateGorilla(turn)
@@ -146,6 +168,39 @@ func update() {
 		}
 	}
 
+}
+
+func updateParticles() {
+	for i, particle := range ciel.Particles {
+		// update speed based on the wind
+		force := getWind(particle.Pos)
+		ciel.Particles[i].Speed = rl.Vector2Add(particle.Speed, force)
+		// apply wind resistance
+		// scale speed vector proportional to the speed
+		ciel.Particles[i].Speed = rl.Vector2Scale(ciel.Particles[i].Speed, 0.99)
+		// apply gravity
+		ciel.Particles[i].Speed.Y += 0.01
+		ciel.Particles[i].Pos = rl.Vector2Add(particle.Pos, particle.Speed)
+
+		// check if off the screen
+		if particle.Pos.X > float32(sW)+20 || particle.Pos.Y > float32(sH)+20 || particle.Pos.X < -20 || particle.Pos.Y < -20 {
+			// reset the particle to a random position on the screen perimeter
+			// top
+			roll := rand.Intn(4)
+			switch roll {
+			case 0:
+				ciel.Particles[i].Pos = rl.Vector2{X: float32(rand.Intn(sW)), Y: -10}
+			case 1:
+				ciel.Particles[i].Pos = rl.Vector2{X: float32(rand.Intn(sW)), Y: float32(sH) + 10}
+			case 2:
+				ciel.Particles[i].Pos = rl.Vector2{X: -10, Y: float32(rand.Intn(sH))}
+			case 3:
+				ciel.Particles[i].Pos = rl.Vector2{X: float32(sW) + 10, Y: float32(rand.Intn(sH))}
+			}
+
+			ciel.Particles[i].Speed = rl.Vector2{X: 0, Y: 0}
+		}
+	}
 }
 
 func updateGorilla(i int) bool {
@@ -197,6 +252,17 @@ func updateGorilla(i int) bool {
 	return false
 }
 
+func getWind(p rl.Vector2) rl.Vector2 {
+	var scale float32
+	scale = 400.0
+	nx := p.X / scale
+	ny := p.Y / scale
+	nz := float32(frame) / 800 // time
+	windSpeed := wind.Eval3(nx, ny, nz)*3 + prevailingWind
+	updraftSpeed := updraft.Eval3(nx, ny, nz) * 0.5
+	return rl.Vector2Scale(rl.Vector2{X: windSpeed, Y: updraftSpeed}, 0.08) // scale the wind
+}
+
 func updateBanana() bool {
 	if banane.Active {
 		banane.Pos = rl.Vector2Add(banane.Pos, banane.Speed)
@@ -208,15 +274,9 @@ func updateBanana() bool {
 		kpa := 101.325 * math.Pow(1-0.0065*float64(elevation)/288.15, 5.2559)
 		inv := 1/kpa - 1/101.325
 		banane.Speed = rl.Vector2Scale(banane.Speed, float32(0.99-inv))
-		// apply magnus effect perpendicularly speed vector
-		effectMagnitude := 0.001 * banane.Rotation
-		force := rl.Vector2Scale(rl.Vector2Rotate(banane.Speed, -90), effectMagnitude)
-		if banane.Rotation > 0 {
-			force = rl.Vector2Scale(rl.Vector2Rotate(banane.Speed, 90), effectMagnitude)
-		}
+		// apply wind
+		force := getWind(banane.Pos)
 		banane.Speed = rl.Vector2Add(banane.Speed, force)
-		// slow the spin
-		spin *= 0.99
 
 	}
 	// check if off the screen
@@ -289,17 +349,53 @@ func updateBanana() bool {
 
 func draw() {
 	rl.BeginDrawing()
-	rl.ClearBackground(sky)
-	drawBuildings()
-	drawExplosions()
+	drawSky()
+	//drawWind()
+	drawSun()
+	drawBuildings(city.Buildings)
 	drawGorillas()
-	rl.DrawRectangleGradientV(0, 0, sW, sH, gTop, gBottom)
 	drawBanana()
-	drawWindows()
+	drawParticles()
+	drawExplosions()
+	rl.DrawRectangleGradientV(0, 0, sW, sH, gTop, gBottom)
+	drawWindows(city.Buildings)
 	drawAim()
 	drawHud()
 	rl.EndDrawing()
 
+}
+
+func drawSky() {
+	rl.ClearBackground(ciel.Color)
+	// draw the stars
+	if ciel.Stars == nil {
+		return
+	}
+	for _, star := range ciel.Stars {
+		rl.DrawCircleV(star.Pos, star.Brightness, star.Color)
+	}
+	roll := rand.Float32()
+	if roll < 0.2 && frame%20 == 0 {
+		star := ciel.Stars[rand.Intn(len(ciel.Stars))]
+		rl.DrawCircleV(star.Pos, star.Brightness+1, rl.White)
+	}
+	rl.DrawCircleV(ciel.Moon.Pos, 50, ciel.Moon.Color)
+}
+
+func drawSun() {
+	// draw the sun
+	light := tools.CityLight(city.City)
+	if light == "day" || light == "civil" {
+		rl.DrawCircleV(ciel.Sun.Pos, 50, rl.Yellow)
+	}
+}
+
+func drawParticles() {
+	for _, particle := range ciel.Particles {
+		// draw the particle as a green rectangle rotated in the direction of travel
+		rot := float32(math.Atan2(float64(particle.Speed.Y), float64(particle.Speed.X))) * 180 / math.Pi
+		rl.DrawRectanglePro(rl.Rectangle{X: particle.Pos.X, Y: particle.Pos.Y, Width: 10, Height: 2.5}, rl.Vector2{X: 0, Y: 0}, rot, rl.Green)
+	}
 }
 
 func drawHud() {
@@ -332,10 +428,8 @@ func drawHud() {
 	power := rl.Vector2Length(angle)
 	angTxt := fmt.Sprintf("Angle: %0.2f", degrees)
 	powTxt := fmt.Sprintf("Power: %0.2f", power)
-	spinTxt := fmt.Sprintf("Spin: %0.2f", spin)
 	rl.DrawText(angTxt, sW/2-rl.MeasureText(angTxt, 20)/2, 10, 20, rl.White)
 	rl.DrawText(powTxt, sW/2-rl.MeasureText(powTxt, 20)/2, 30, 20, rl.White)
-	rl.DrawText(spinTxt, sW/2-rl.MeasureText(spinTxt, 20)/2, 50, 20, rl.White)
 	// draw player data
 	y := int32(10)
 	for i, gorilla := range players {
@@ -353,10 +447,22 @@ func drawHud() {
 		}
 		y += 20
 	}
+
 }
 
-func drawBuildings() {
-	for _, building := range city.Buildings {
+func drawBackdrop() {
+	for _, row := range city.Backdrop {
+		drawBuildings(row)
+		drawWindows(row)
+		fog := color.RGBA{255, 255, 255, 64}
+		rl.DrawRectangleGradientV(0, 0, sW, sH, fog, fog)
+	}
+}
+
+func drawBuildings(buildings []scape.Building) {
+	// clip what is drawn to the screen
+
+	for _, building := range buildings {
 		rl.DrawRectangleRec(building.Outline, building.Color.Color)
 		shade := rl.Rectangle{
 			X:      building.Outline.X + building.Outline.Width - 10,
@@ -371,10 +477,10 @@ func drawBuildings() {
 	}
 }
 
-func drawWindows() {
+func drawWindows(buildings []scape.Building) {
 	thing := rand.New(rand.NewSource(99))
 
-	for _, building := range city.Buildings {
+	for _, building := range buildings {
 		for _, window := range building.Windows {
 			// 50% chance of a light being on
 			mid := rl.Vector2{
@@ -412,9 +518,21 @@ func drawGorillas() {
 }
 
 func drawExplosions() {
-	for _, explosion := range explosions {
+	for i, explosion := range explosions {
 		if explosion.Active {
-			rl.DrawCircleV(explosion.Pos, explosion.Radius, sky)
+			seed := rand.New(rand.NewSource(int64(i)))
+			angle := seed.Float32() * 360
+			n := seed.Intn(15) + 5
+			for i := 0; i < n; i++ {
+				// draw a square with sides of length explosion.Radius and a angle angle + 360/n centered on the explosion.Pos
+				// calculate the x and y of the corner
+				x := explosion.Pos.X
+				y := explosion.Pos.Y
+				size := explosion.Radius / float32(math.Sqrt(2))
+				rl.DrawRectanglePro(rl.Rectangle{X: x, Y: y, Width: size, Height: size}, rl.Vector2{X: 0, Y: 0}, angle, ciel.Color)
+				angle += 360 / float32(n)
+			}
+			//rl.DrawCircleV(explosion.Pos, explosion.Radius, rl.Yellow)
 		}
 	}
 }
@@ -429,8 +547,24 @@ func drawAim() {
 	if !players[turn].IsAlive {
 		return
 	}
+	if players[turn].Aim.X == 0 && players[turn].Aim.Y == 0 {
+		return
+	}
 	rl.DrawLineV(players[turn].Pos, players[turn].Aim, rl.Red)
 	rl.DrawCircleV(players[turn].Aim, 5, rl.Red)
+
+}
+
+func drawWind() {
+	for x := 0; x < sW; x += 20 {
+		for y := 0; y < sH; y += 20 {
+			// draw a vector showing the wind
+			force := getWind(rl.Vector2{X: float32(x), Y: float32(y)})
+			force = rl.Vector2Scale(force, 440)
+			rl.DrawCircleV(rl.Vector2{X: float32(x), Y: float32(y)}, 2, rl.Green)
+			rl.DrawLineV(rl.Vector2{X: float32(x), Y: float32(y)}, rl.Vector2Add(rl.Vector2{X: float32(x), Y: float32(y)}, force), rl.Blue)
+		}
+	}
 }
 
 func main() {
@@ -442,5 +576,6 @@ func main() {
 		rl.UpdateMusicStream(music)
 		update()
 		draw()
+		frame++
 	}
 }

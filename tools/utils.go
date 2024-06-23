@@ -15,25 +15,25 @@ func CityToGradient(c scape.City) (color.RGBA, color.RGBA) {
 	alpha := uint8(c.Population * alphaFactor)
 
 	pretty.Println(c, light, alpha)
+	var top, bottom color.RGBA
 	switch light {
 	case "day":
-		alpha = 100
-		top := color.RGBA{240, 240, 240, alpha}
-		bottom := color.RGBA{170, 170, 170, alpha}
-		return top, bottom
+		top = color.RGBA{100, 100, 200, 200}
+		bottom = color.RGBA{50, 50, 255, 0}
 	case "civil":
-		alpha = 128
-		return color.RGBA{134, 48, 43, alpha}, color.RGBA{94, 113, 152, alpha}
+		top = color.RGBA{0, 0, 170, 100}
+		bottom = color.RGBA{240, 64, 10, 160}
 	case "nautical":
-		alpha = 220
-		return color.RGBA{60, 10, 40, alpha}, color.RGBA{10, 10, 0, alpha}
+		top = color.RGBA{0, 0, 100, 0}
+		bottom = color.RGBA{100, 10, 10, 160}
 	case "astronomical":
-		alpha = 230
-		return color.RGBA{0, 88, 181, alpha}, color.RGBA{10, 10, 0, alpha}
+		top = color.RGBA{0, 0, 0, 50}
+		bottom = color.RGBA{10, 10, 10, 160}
 	default:
-		alpha = 240
-		return color.RGBA{0, 0, 0, alpha}, color.RGBA{10, 10, 0, alpha}
+		top = color.RGBA{0, 0, 0, 50}
+		bottom = color.RGBA{10, 10, 10, 160}
 	}
+	return top, bottom
 }
 
 func CityLight(c scape.City) string {

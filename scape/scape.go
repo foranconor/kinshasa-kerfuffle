@@ -6,7 +6,6 @@ import (
 	"time"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
-	"github.com/kr/pretty"
 	"github.com/lucasb-eyer/go-colorful"
 )
 
@@ -161,6 +160,7 @@ type Paint struct {
 type Scape struct {
 	City      City
 	Buildings []Building
+	Backdrop  [][]Building
 }
 
 var MaxBuildings = 40
@@ -210,22 +210,37 @@ func InitScape(x, y int) Scape {
 	minute := rand.Intn(60)
 	t := time.Date(2020, 1, 1, hour, minute, 0, 0, time.UTC)
 	scape.City.Time = t
+	z := 1
+	if scape.City.Population > 2000000 {
+		z = 2
+	} else if scape.City.Population < 600000 {
+		z = 0
+	}
+	scape.Buildings = generateBuildings(x, y, z)
+	for i := 0; i < z+1; i++ {
+		scape.Backdrop = append(scape.Backdrop, generateBuildings(x, y, z))
+	}
+	return scape
+}
+
+func generateBuildings(x, y, z int) []Building {
+	row := make([]Building, 0)
 	buildings := rand.Intn(MaxBuildings-MinBuildings) + MinBuildings
 	width := x / buildings
 	i := 0
 	w := 0.0
 	for i < buildings {
 		height := (rand.Intn(y/2) + y/10)
-		if scape.City.Population > 2000000 {
-			pretty.Println("big city")
-			height += rand.Intn(y / 3)
-		} else if scape.City.Population < 600000 {
-			pretty.Println("little city")
+		switch z {
+		case 0:
 			height -= rand.Intn(y / 8)
 			if height < y/10 {
 				height = y / 10
 			}
+		case 2:
+			height += rand.Intn(y / 3)
 		}
+
 		bWidth := width + rand.Intn(width)
 		if w+float64(bWidth) > float64(x-20) {
 			bWidth = int(float64(x) - w)
@@ -234,19 +249,18 @@ func InitScape(x, y int) Scape {
 			Cost:    rand.Intn(1000) + 100,
 			Outline: rl.Rectangle{X: float32(w), Y: float32(y - height), Width: float32(bWidth), Height: float32(height)},
 		}
-		scape.Buildings = append(scape.Buildings, building)
+		row = append(row, building)
 		w += float64(bWidth)
 		if w >= float64(x) {
 			break
 		}
 		i++
 	}
-	colors := Colors(len(scape.Buildings))
-	for i, building := range scape.Buildings {
-		scape.Buildings[i] = fleshOutBuilding(building, colors[i])
+	colors := Colors(len(row))
+	for i, building := range row {
+		row[i] = fleshOutBuilding(building, colors[i])
 	}
-
-	return scape
+	return row
 }
 
 func fleshOutBuilding(building Building, paint Paint) Building {
